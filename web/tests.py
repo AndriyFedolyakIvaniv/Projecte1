@@ -79,9 +79,54 @@ class QuestionViewTests(TestCase):
 
 		self.assertEqual(response.status_code, 404)
 
-	def test_results_and_vote_views_include_question_id(self):
-		results_response = self.client.get(reverse('web:results', args=[7]))
-		vote_response = self.client.get(reverse('web:vote', args=[7]))
+	def test_results_displays_vote_counts(self):
+		question = Question.objects.create(
+			question_text='What is new?',
+			pub_date=timezone.now(),
+		)
+		Choice.objects.create(question=question, choice_text='Nothing', votes=2)
 
-		self.assertContains(results_response, 'results of question 7')
-		self.assertContains(vote_response, 'voting on question 7')
+		response = self.client.get(reverse('web:results', args=[question.pk]))
+
+		self.assertContains(response, 'Nothing -- 2 votes')
+
+	def test_vote_increments_selected_choice_and_redirects(self):
+		question = Question.objects.create(
+			question_text='What is new?',
+			pub_date=timezone.now(),
+		)
+		choice = Choice.objects.create(question=question, choice_text='Nothing')
+
+		response = self.client.post(
+			reverse('web:vote', args=[question.pk]),
+			{'choice': choice.pk},
+		)
+
+		self.assertRedirects(response, reverse('web:results', args=[question.pk]))
+		choice.refresh_from_db()
+		self.assertEqual(choice.votes, 1)
+
+	def test_vote_without_choice_redisplays_error(self):
+		question = Question.objects.create(
+			question_text='What is new?',
+			pub_date=timezone.now(),
+		)
+		Choice.objects.create(question=question, choice_text='Nothing')
+
+		response = self.client.post(reverse('web:vote', args=[question.pk]))
+
+		self.assertEqual(response.status_code, 200)
+		self.assertEqual(response.context['error_message'], "You didn't select a choice.")
+
+	def test_vote_with_unknown_choice_redisplays_error(self):
+		question = Question.objects.create(
+			question_text='What is new?',
+			pub_date=timezone.now(),
+		)
+
+		response = self.client.post(
+			reverse('web:vote', args=[question.pk]),
+			{'choice': 999},
+		)
+
+		self.assertEqual(response.context['error_message'], "You didn't select a choice.")
